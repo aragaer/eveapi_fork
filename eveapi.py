@@ -99,7 +99,9 @@
 #
 #-----------------------------------------------------------------------------
 
-import httplib
+# This version is designed to work with GAE
+
+from google.appengine.api import urlfetch
 import urlparse
 import urllib
 import copy
@@ -295,34 +297,20 @@ class _RootContext(_Context):
 			response = None
 
 		if response is None:
-			if self._scheme == "https":
-				connectionclass = httplib.HTTPSConnection
+			# urlfetch default headers are exactly the ones we need
+			if kw:
+				response = urlfetch.fetch(method=urlfetch.POST, url=path, payload=urllib.urlencode(kw), deadline=60)
 			else:
-				connectionclass = httplib.HTTPConnection
-
-			if self._proxy is None:
-				http = connectionclass(self._host)
-				if kw:
-					http.request("POST", path, urllib.urlencode(kw), {"Content-type": "application/x-www-form-urlencoded"})
-				else:
-					http.request("GET", path)
-			else:
-				http = connectionclass(*self._proxy)
-				if kw:
-					http.request("POST", 'https://'+self._host+path, urllib.urlencode(kw), {"Content-type": "application/x-www-form-urlencoded"})
-				else:
-					http.request("GET", 'https://'+self._host+path)
-
-			response = http.getresponse()
-			if response.status != 200:
-				if response.status == httplib.NOT_FOUND:
+				response = urlfetch.fetch(method=urlfetch.GET, url=path, deadline=60)
+			if response.status_code != 200:
+				if response.status_code == 404:
 					raise AttributeError("'%s' not available on API server (404 Not Found)" % path)
 				else:
-					raise RuntimeError("'%s' request failed (%d %s)" % (path, response.status, response.reason))
+					raise RuntimeError("'%s' request failed (%d %s)" % (path, response.status_code, response.reason))
 
 			if cache:
 				store = True
-				response = response.read()
+				response = response.content
 			else:
 				store = False
 		else:
