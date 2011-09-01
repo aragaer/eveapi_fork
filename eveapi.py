@@ -183,10 +183,10 @@ def _ParseXML(response, fromContext, storeFunc):
 		obj = response
 	elif type(response) in (str, unicode):
 		obj = _Parser().Parse(response, False)
-	elif hasattr(response, "read"):
-		obj = _Parser().Parse(response, True)
+	elif hasattr(response, "content"):
+		obj = _Parser().Parse(response.content, False)
 	else:
-		raise TypeError("retrieve method must return None, string, file-like object or an Element instance")
+		raise TypeError("retrieve method must return None, string, URLFetchResult or an Element instance")
 
 	error = getattr(obj, "error", False)
 	if error:
@@ -298,10 +298,11 @@ class _RootContext(_Context):
 
 		if response is None:
 			# urlfetch default headers are exactly the ones we need
+			url = self._scheme+'://'+self._host+path
 			if kw:
-				response = urlfetch.fetch(method=urlfetch.POST, url=path, payload=urllib.urlencode(kw), deadline=60)
+				response = urlfetch.fetch(method=urlfetch.POST, url=url, payload=urllib.urlencode(kw), deadline=10)
 			else:
-				response = urlfetch.fetch(method=urlfetch.GET, url=path, deadline=60)
+				response = urlfetch.fetch(method=urlfetch.GET, url=url, deadline=10)
 			if response.status_code != 200:
 				if response.status_code == 404:
 					raise AttributeError("'%s' not available on API server (404 Not Found)" % path)
