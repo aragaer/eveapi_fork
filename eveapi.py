@@ -300,9 +300,9 @@ class _RootContext(_Context):
 			# urlfetch default headers are exactly the ones we need
 			url = self._scheme+'://'+self._host+path
 			if kw:
-				response = urlfetch.fetch(method=urlfetch.POST, url=url, payload=urllib.urlencode(kw), deadline=10)
+				response = urlfetch.fetch(method=urlfetch.POST, url=url, payload=urllib.urlencode(kw), deadline=60)
 			else:
-				response = urlfetch.fetch(method=urlfetch.GET, url=url, deadline=10)
+				response = urlfetch.fetch(method=urlfetch.GET, url=url, deadline=60)
 			if response.status_code != 200:
 				if response.status_code == 404:
 					raise AttributeError("'%s' not available on API server (404 Not Found)" % path)
