@@ -124,8 +124,7 @@
 #
 #-----------------------------------------------------------------------------
 
-import httplib
-import urlparse
+import http.client
 import urllib
 import copy
 
@@ -138,7 +137,7 @@ proxySSL = False
 
 #-----------------------------------------------------------------------------
 
-class Error(StandardError):
+class Error(Exception):
 	def __init__(self, code, message):
 		self.code = code
 		self.args = (message.rstrip("."),)
@@ -184,7 +183,7 @@ def EVEAPIConnection(url="api.eveonline.com", cacheHandler=None, proxy=None, pro
 
 	if not url.startswith("http"):
 		url = "https://" + url
-	p = urlparse.urlparse(url, "https")
+	p = urllib.parse.urlparse(url, "https")
 	if p.path and p.path[-1] == "/":
 		p.path = p.path[:-1]
 	ctx = _RootContext(None, p.path, {}, {})
@@ -208,12 +207,14 @@ def _ParseXML(response, fromContext, storeFunc):
 
 	if fromContext and isinstance(response, Element):
 		obj = response
-	elif type(response) in (str, unicode):
+	elif type(response) == str:
 		obj = _Parser().Parse(response, False)
+	elif type(response) == bytes:
+		obj = _Parser().Parse(response.decode(), False)
 	elif hasattr(response, "read"):
 		obj = _Parser().Parse(response, True)
 	else:
-		raise TypeError("retrieve method must return None, string, file-like object or an Element instance")
+		raise TypeError("retrieve method must return None, string, file-like object or an Element instance, got %s" % type(response))
 
 	error = getattr(obj, "error", False)
 	if error:
@@ -273,7 +274,7 @@ class _Context(object):
 	def __call__(self, **kw):
 		if kw:
 			# specified keywords override contextual ones
-			for k, v in self.parameters.iteritems():
+			for k, v in self.parameters.items():
 				if k not in kw:
 					kw[k] = v
 		else:
@@ -309,7 +310,7 @@ class _RootContext(_Context):
 
 	def __call__(self, path, **kw):
 		# convert list type arguments to something the API likes
-		for k, v in kw.iteritems():
+		for k, v in kw.items():
 			if isinstance(v, _listtypes):
 				kw[k] = ','.join(map(str, list(v)))
 
@@ -327,24 +328,24 @@ class _RootContext(_Context):
 			if self._proxy is None:
 				req = path
 				if self._scheme == "https":
-					conn = httplib.HTTPSConnection(self._host)
+					conn = http.client.HTTPSConnection(self._host)
 				else:
-					conn = httplib.HTTPConnection(self._host)
+					conn = http.client.HTTPConnection(self._host)
 			else:
 				req = self._scheme+'://'+self._host+path
 				if self._proxySSL:
-					conn = httplib.HTTPSConnection(*self._proxy)
+					conn = http.client.HTTPSConnection(*self._proxy)
 				else:
-					conn = httplib.HTTPConnection(*self._proxy)
+					conn = http.client.HTTPConnection(*self._proxy)
 
 			if kw:
-				conn.request("POST", req, urllib.urlencode(kw), {"Content-type": "application/x-www-form-urlencoded"})
+				conn.request("POST", req, urllib.parse.urlencode(kw), {"Content-type": "application/x-www-form-urlencoded"})
 			else:
 				conn.request("GET", req)
 
 			response = conn.getresponse()
 			if response.status != 200:
-				if response.status == httplib.NOT_FOUND:
+				if response.status == http.client.NOT_FOUND:
 					raise AttributeError("'%s' not available on API server (404 Not Found)" % path)
 				else:
 					raise RuntimeError("'%s' request failed (%d %s)" % (path, response.status, response.reason))
@@ -362,7 +363,7 @@ class _RootContext(_Context):
 			# implementor is handling fallbacks...
 			try:
 				return _ParseXML(response, True, store and (lambda obj: cache.store(self._host, path, kw, response, obj)))
-			except Error, e:
+			except Error as e:
 				response = retrieve_fallback(self._host, path, kw, reason=e)
 				if response is not None:
 					return response
@@ -507,7 +508,7 @@ class _Parser(object):
 				if not self.container._cols or (numAttr > numCols):
 					# the row data contains more attributes than were defined.
 					self.container._cols = attributes[0::2]
-				self.container.append([_autocast(attributes[i], attributes[i+1]) for i in xrange(0, len(attributes), 2)])
+				self.container.append([_autocast(attributes[i], attributes[i+1]) for i in range(0, len(attributes), 2)])
 			# </hack>
 
 			this._isrow = True
@@ -597,7 +598,7 @@ class _Parser(object):
 						e = Element()
 						e._name = this._name
 						setattr(self.container, this._name, e)
-						for i in xrange(0, len(attributes), 2):
+						for i in range(0, len(attributes), 2):
 							setattr(e, attributes[i], attributes[i+1])
 					else:
 						# tag of the form: <tag />, treat as empty string.
@@ -610,7 +611,7 @@ class _Parser(object):
 			# multiples of some tag or attribute. Code below handles this case.
 			elif isinstance(sibling, Rowset):
 				# its doppelganger is a rowset, append this as a row to that.
-				row = [_autocast(attributes[i], attributes[i+1]) for i in xrange(0, len(attributes), 2)]
+				row = [_autocast(attributes[i], attributes[i+1]) for i in range(0, len(attributes), 2)]
 				row.extend([getattr(this, col) for col in attributes2])
 				sibling.append(row)
 			elif isinstance(sibling, Element):
@@ -619,11 +620,11 @@ class _Parser(object):
 				# into a Rowset, adding the sibling element and this one.
 				rs = Rowset()
 				rs.__catch = rs._name = this._name
-				row = [_autocast(attributes[i], attributes[i+1]) for i in xrange(0, len(attributes), 2)]+[getattr(this, col) for col in attributes2]
+				row = [_autocast(attributes[i], attributes[i+1]) for i in range(0, len(attributes), 2)]+[getattr(this, col) for col in attributes2]
 				rs.append(row)
-				row = [getattr(sibling, attributes[i]) for i in xrange(0, len(attributes), 2)]+[getattr(sibling, col) for col in attributes2]
+				row = [getattr(sibling, attributes[i]) for i in range(0, len(attributes), 2)]+[getattr(sibling, col) for col in attributes2]
 				rs.append(row)
-				rs._cols = [attributes[i] for i in xrange(0, len(attributes), 2)]+[col for col in attributes2]
+				rs._cols = [attributes[i] for i in range(0, len(attributes), 2)]+[col for col in attributes2]
 				setattr(self.container, this._name, rs)
 			else:
 				# something else must have set this attribute already.
@@ -631,7 +632,7 @@ class _Parser(object):
 				pass
 
 		# Now fix up the attributes and be done with it.
-		for i in xrange(0, len(attributes), 2):
+		for i in range(0, len(attributes), 2):
 			this.__dict__[attributes[i]] = _autocast(attributes[i], attributes[i+1])
 
 		return
@@ -654,7 +655,7 @@ class Element(object):
 	def __str__(self):
 		return "<Element '%s'>" % self._name
 
-_fmt = u"%s:%s".__mod__
+_fmt = "%s:%s".__mod__
 class Row(object):
 	# A Row is a single database record associated with a Rowset.
 	# The fields in the record are accessed as attributes by their respective
@@ -685,7 +686,7 @@ class Row(object):
 		try:
 			return self._row[self._cols.index(this)]
 		except:
-			raise AttributeError, this
+			raise AttributeError(this)
 
 	def __getitem__(self, this):
 		return self._row[self._cols.index(this)]
@@ -733,7 +734,7 @@ class Rowset(object):
 
 	def SortBy(self, column, reverse=False):
 		ix = self._cols.index(column)
-		self.sort(key=lambda e: e[ix], reverse=reverse)
+		self.sort(key=lambda e: str(e[ix]), reverse=reverse)
 
 	def SortedBy(self, column, reverse=False):
 		rs = self[:]
@@ -823,7 +824,7 @@ class IndexRowset(Rowset):
 		if row is None:
 			if default:
 				return default[0]
-			raise KeyError, key
+			raise KeyError(key)
 		return Row(self._cols, row)
 
 	# -------------
@@ -905,9 +906,7 @@ class FilterRowset(object):
 	def _bind(self):
 		items = self._items
 		self.keys = items.keys
-		self.iterkeys = items.iterkeys
 		self.__contains__ = items.__contains__
-		self.has_key = items.has_key
 		self.__len__ = items.__len__
 		self.__iter__ = items.__iter__
 
