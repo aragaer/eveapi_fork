@@ -1,7 +1,7 @@
 #-----------------------------------------------------------------------------
 # eveapi - EVE Online API access
 #
-# Copyright (c)2007 Jamie "Entity" van den Berge <entity@vapor.com>
+# Copyright (c)2007-2012 Jamie "Entity" van den Berge <jamie@hlekkir.com>
 # 
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -25,10 +25,19 @@
 # OTHER DEALINGS IN THE SOFTWARE
 #
 #-----------------------------------------------------------------------------
+# Version: 1.2.7 - 3 September 2012
+# - Added get() method to Row object.
+#
+# Version: 1.2.6 - 29 August 2012
+# - Added finer error handling + added setup.py to allow distributing eveapi
+#   through pypi.
+#
+# Version: 1.2.5 - 1 August 2012
+# - Row objects now have __hasattr__ and __contains__ methods
+#
 # Version: 1.2.4 - 12 April 2012
 # - API version of XML response now available as _meta.version
-# - 
-
+#
 # Version: 1.2.3 - 10 April 2012
 # - fix for tags of the form <tag attr=bla ... />
 #
@@ -142,6 +151,15 @@ class Error(Exception):
 		self.code = code
 		self.args = (message.rstrip("."),)
 
+class RequestError(Error):
+	pass
+
+class AuthenticationError(Error):
+	pass
+
+class ServerError(Error):
+	pass
+
 
 def EVEAPIConnection(url="api.eveonline.com", cacheHandler=None, proxy=None, proxySSL=False):
 	# Creates an API object through which you can call remote functions.
@@ -218,7 +236,14 @@ def _ParseXML(response, fromContext, storeFunc):
 
 	error = getattr(obj, "error", False)
 	if error:
-		raise Error(error.code, error.data)
+		if error.code >= 500:
+			raise ServerError(error.code, error.data)
+		elif error.code >= 200:
+			raise AuthenticationError(error.code, error.data)
+		elif error.code >= 100:
+			raise RequestError(error.code, error.data)
+		else:
+			raise Error(error.code, error.data)
 
 	result = getattr(obj, "result", False)
 	if not result:
@@ -681,6 +706,18 @@ class Row(object):
 		if type(other) != type(self):
 			raise TypeError("Incompatible comparison type")
 		return cmp(self._cols, other._cols) or cmp(self._row, other._row)
+
+	def __hasattr__(self, this):
+		if this in self._cols:
+			return self._cols.index(this) < len(self._row)
+		return False
+
+	__contains__ = __hasattr__
+
+	def get(self, this, default=None):
+		if (this in self._cols) and (self._cols.index(this) < len(self._row)):
+			return self._row[self._cols.index(this)]
+		return default
 
 	def __getattr__(self, this):
 		try:
